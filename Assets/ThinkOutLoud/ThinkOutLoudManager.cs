@@ -1,25 +1,50 @@
 using UnityEngine;
-using UnityEngine.UI;
-using System;
 using System.IO;
+using System.Threading.Tasks;
 
-public class Audio : MonoBehaviour
+public class ThinkOutLoudManager : MonoBehaviour
 {
     private AudioClip audioClip;
     private bool isRecording = false;
     private const int samplingRate = 44100;
     private const float silenceThreshold = 0.02f; // Adjust based on environment
-    private const float silenceDuration = 7.0f;   // Duration to trigger silence detection
+     
     private float silenceTimer = 0f;
+    private bool savedLocally = false;
+    private bool uploadedToServer = false;
 
-    public GameObject promptText; // UI Text element to show the prompt
+    public GameObject promptText; 
+
+
+    [Header("Recording Settings")]
+
+    [Tooltip("Start recording as soon as the game starts. If false, you can call StartRecording() manually with a unityEvent")]
+    [SerializeField] bool startRecordingAtGameStart = true; // Start recording as soon as the game starts
+
+
+    [SerializeField] float silenceDuration = 0.5f; // Duration of silence before prompting user to speak
+    
+    [Tooltip("Stop recording when the game ends. If false, you can call StopRecordingAndSave() manually with a unityEvent")]
+    [SerializeField] bool stopRecordingAtGameEnd = true; // Stop recording when the game ends
+
+
+    [Tooltip("Save the audio file locally")]
+    [SerializeField] bool saveLocally = true; // Save the audio file locally
+
+
+    [Tooltip("Upload the audio file to a server")]
+    [SerializeField] bool uploadToServer = true; // Upload the audio file to a server
+
+    
 
     void Start()
     {
+        if (startRecordingAtGameStart)
+        {
+            StartRecording();
+        }
         // Initially hide the prompt text
         promptText.gameObject.SetActive(false);
-        StartRecording();
-        Invoke("StopRecordingAndSave", 10);
     }
 
     void Update()
@@ -42,10 +67,8 @@ public class Audio : MonoBehaviour
     }
 
     // Stop recording, save audio to file, and reset state
-    public void StopRecordingAndSave()
+    public bool StopRecordingAndSave()
     {
-        if (!isRecording) return;
-
         Microphone.End(null);
         isRecording = false;
         promptText.gameObject.SetActive(false);
@@ -53,10 +76,16 @@ public class Audio : MonoBehaviour
 
         // Save the audio to a file
         string path = Path.Combine(Application.persistentDataPath, "recording.wav");
-        SaveAudioToFile(audioClip);
+        if (saveLocally)
+        {
+            SaveAudioToFile(audioClip);
+        }
 
-        // Upload the file to the server
-        GetComponent<AudioUpload>().UploadAudioFile(path);
+        if (uploadToServer) {
+            GetComponent<AudioUpload>().UploadAudioFile(path);
+        }
+
+        return true;
     }
 
     // Check if there's silence, and prompt user if necessary
@@ -92,6 +121,14 @@ public class Audio : MonoBehaviour
         }
     }
 
+
+    void OnApplicationPause(bool pauseStatus)
+    {
+        if (!stopRecordingAtGameEnd) return;
+        if (!pauseStatus) return;
+        StopRecordingAndSave();
+    }
+
     private void PromptUserToSpeak()
     {
         
@@ -110,6 +147,8 @@ public class Audio : MonoBehaviour
         }
 
         Debug.Log("Audio saved to: " + path);
+
+        savedLocally = true;
     }
 
     private byte[] ConvertAudioClipToWav(AudioClip clip)
